@@ -22,7 +22,7 @@ from agent import fix_tests
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = "/Users/tejas/Desktop/QuixBugs"
+PROJECT_ROOT = "/Users/tejas/Documents/AI-Projects/QuixBugs"
 ATTEMPTS = 1                      # pass@1: one repair attempt per program
 PAUSE_BETWEEN = 4                 # seconds between programs (free-tier pacing)
 RESULTS_JSON = "results.json"
