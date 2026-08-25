@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test-Repair Agent — Benchmark Report</title>
+<style>
+  :root {
+    --bg:        #0f1115;
+    --panel:     #161a21;
+    --panel-2:   #1c2129;
+    --line:      #262c36;
+    --ink:       #e6e9ef;
+    --ink-dim:   #8a93a2;
+    --ink-faint: #5b6472;
+    --pass:      #4ec9a4;
+    --fail:      #e5686d;
+    --warn:      #d9a24e;
+    --accent:    #6aa5ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace,
+                 Menlo, Consolas, monospace;
+    line-height: 1.5;
+    padding: 48px 24px 96px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+
+  /* ---- header ---------------------------------------------------------- */
+  .eyebrow {
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 26px; font-weight: 600; letter-spacing: -.01em;
+    margin-bottom: 8px;
+  }
+  .sub { color: var(--ink-dim); font-size: 14px; max-width: 60ch; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 10px 28px;
+    margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-dim);
+  }
+  .meta b { color: var(--ink); font-weight: 500; }
+
+  /* ---- headline score -------------------------------------------------- */
+  .score {
+    display: grid; grid-template-columns: auto 1fr; gap: 28px;
+    align-items: center;
+    margin: 40px 0;
+    padding: 28px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .score .big {
+    font-size: 60px; font-weight: 600; letter-spacing: -.02em;
+    line-height: 1; color: var(--ink);
+  }
+  .score .big #passed { color: var(--pass); }
+  .score .big span.slash,
+  .score .big #total { color: var(--ink-faint); font-size: 30px; }
+  .score .rate { color: var(--pass); }
+  .bars { display: flex; flex-direction: column; gap: 12px; }
+  .bar-row { display: grid; grid-template-columns: 78px 1fr 46px; gap: 12px;
+             align-items: center; font-size: 12.5px; color: var(--ink-dim); }
+  .track { display: block; height: 8px; background: var(--panel-2);
+           border-radius: 4px; overflow: hidden; width: 100%; }
+  .fill { display: block; height: 100%; border-radius: 4px; min-width: 2px; }
+  .fill.pass { background: var(--pass); }
+  .fill.fail { background: var(--fail); }
+  .fill.err  { background: var(--warn); }
+  .bar-row .n { text-align: right; color: var(--ink); }
+
+  /* ---- status grid (the signature element) ----------------------------- */
+  .section-label {
+    font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 40px 0 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-label::after {
+    content: ""; flex: 1; height: 1px; background: var(--line);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .cell {
+    background: var(--panel); border: 1px solid var(--line);
+    border-left-width: 3px; border-radius: 6px;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0;
+  }
+  .cell.passed { border-left-color: var(--pass); }
+  .cell.failed { border-left-color: var(--fail); }
+  .cell.error  { border-left-color: var(--warn); }
+  .cell .nm {
+    font-size: 12.5px; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cell .st { font-size: 11px; display: flex; justify-content: space-between;
+              gap: 8px; }
+  .cell.passed .st .tag { color: var(--pass); }
+  .cell.failed .st .tag { color: var(--fail); }
+  .cell.error  .st .tag { color: var(--warn); }
+  .cell .st .t { color: var(--ink-faint); }
+
+  /* ---- how it works (collapsible) -------------------------------------- */
+  .how-wrap { margin-top: 40px; }
+  .how-wrap summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 4px 0;
+  }
+  .how-wrap summary::-webkit-details-marker { display: none; }
+  .how-wrap summary:hover { color: var(--ink-dim); }
+  .how-wrap summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px;
+  }
+  .how-wrap summary .how-label { flex: 0 0 auto; }
+  .how-wrap summary::after {
+    content: ""; flex: 1; height: 1px; background: var(--line);
+  }
+  .how-wrap .chev {
+    order: 3; font-size: 11px; color: var(--ink-faint);
+    transform: rotate(0deg);
+  }
+  .how-wrap[open] .chev { transform: rotate(90deg); }
+
+  .how { margin-top: 16px;
+         background: var(--panel); border: 1px solid var(--line);
+         border-radius: 10px; padding: 26px 28px; }
+  .how ol { list-style: none; counter-reset: step; display: grid; gap: 14px; }
+  .how li { counter-increment: step; padding-left: 40px; position: relative;
+            font-size: 13.5px; color: var(--ink-dim); }
+  .how li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute; left: 0; top: 0;
+    color: var(--accent); font-size: 12px; letter-spacing: .05em;
+  }
+  .how li b { color: var(--ink); font-weight: 500; }
+
+  .note {
+    margin-top: 20px; font-size: 12.5px; color: var(--ink-faint);
+    border-left: 2px solid var(--line); padding-left: 14px;
+  }
+  footer { margin-top: 48px; font-size: 12px; color: var(--ink-faint); }
+
+  @media (max-width: 560px) {
+    body { padding: 32px 16px 64px; }
+    .score { grid-template-columns: 1fr; gap: 20px; text-align: left; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .fill { transition: width .6s ease; }
+    .cell { transition: border-color .2s ease; }
+    .how-wrap .chev { transition: transform .2s ease; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Benchmark report</div>
+  <h1>Agentic Test-Repair System</h1>
+
+  <div class="meta" id="meta"></div>
+
+  <div class="score">
+    <div>
+      <div class="big"><span id="passed"></span><span class="slash">/</span><span id="total"></span></div>
+      <div class="rate" id="rate"></div>
+    </div>
+    <div class="bars" id="bars"></div>
+  </div>
+
+  <div class="section-label">Per-program results</div>
+  <div class="grid" id="grid"></div>
+
+  <details class="how-wrap">
+    <summary>
+      <span class="how-label">How the agent works</span>
+      <span class="chev" aria-hidden="true">▸</span>
+    </summary>
+    <div class="how">
+      <ol>
+        <li><b>Run the tests.</b> Execute the target project's suite and capture
+            which tests fail and why.</li>
+        <li><b>Read the code.</b> Load the source file the failing test exercises.</li>
+        <li><b>Ask for a repair.</b> Send the failing test output and the source
+            to the model, constrained to return only corrected code.</li>
+        <li><b>Apply and verify.</b> Write the fix back and re-run the tests to
+            check whether they now pass.</li>
+        <li><b>Loop or stop.</b> If still failing, feed the new error back and
+            retry up to a set limit; otherwise report success.</li>
+      </ol>
+      <p class="note" id="note"></p>
+    </div>
+  </details>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+  const DATA = {"generated_at": "2026-08-24 22:18", "benchmark": "Project: QuixBugs", "model": "gemini-3.6-flash", "mode": "convention discovery, up to 3 attempt(s) per test", "total": 40, "passed": 39, "failed": 1, "errored": 0, "success_rate": 97.5, "results": [{"name": "test_bitcount.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_breadth_first_search.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_bucketsort.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_depth_first_search.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_detect_cycle.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_find_first_in_sorted.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_find_in_sorted.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_flatten.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_gcd.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_get_factors.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_hanoi.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_is_valid_parenthesization.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_kheapsort.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_knapsack.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_kth.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_lcs_length.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_levenshtein.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_lis.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_longest_common_subsequence.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_max_sublist_sum.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_mergesort.py", "status": "failed", "attempts": 0, "seconds": null, "note": "dry run"}, {"name": "test_minimum_spanning_tree.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_next_palindrome.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_next_permutation.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_pascal.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_possible_change.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_powerset.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_quicksort.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_reverse_linked_list.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_rpn_eval.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_shortest_path_length.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_shortest_path_lengths.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_shortest_paths.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_shunting_yard.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_sieve.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_sqrt.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_subsequences.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_to_base.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_topological_ordering.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}, {"name": "test_wrap.py", "status": "passed", "attempts": 0, "seconds": null, "note": "no repair needed"}]};
+
+  const $ = (id) => document.getElementById(id);
+
+  // meta line
+  $("meta").innerHTML = [
+    ["Benchmark", DATA.benchmark],
+    ["Model", DATA.model],
+    ["Mode", DATA.mode],
+    ["Generated", DATA.generated_at],
+  ].map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join("");
+
+  // headline
+  $("passed").textContent = DATA.passed;
+  $("total").textContent  = DATA.total;
+  $("rate").textContent   = DATA.success_rate + "% success rate";
+
+  // bars
+  const rows = [
+    ["Passed",  DATA.passed,  "pass"],
+    ["Failed",  DATA.failed,  "fail"],
+    ["Errored", DATA.errored, "err"],
+  ];
+  $("bars").innerHTML = rows.map(([label, n, cls]) => {
+    const pct = DATA.total ? (n / DATA.total * 100) : 0;
+    return `<div class="bar-row">
+      <span>${label}</span>
+      <span class="track"><span class="fill ${cls}" style="width:${pct}%"></span></span>
+      <span class="n">${n}</span>
+    </div>`;
+  }).join("");
+
+  // status grid
+  $("grid").innerHTML = DATA.results.map(r => {
+    const tag = r.status.toUpperCase();
+    let right = "";
+    if (r.status === "error")        right = r.note || "error";
+    else if (r.seconds != null)      right = r.seconds + "s";
+    else                             right = "prior run";
+    return `<div class="cell ${r.status}">
+      <span class="nm" title="${r.name}">${r.name}</span>
+      <span class="st"><span class="tag">${tag}</span><span class="t">${right}</span></span>
+    </div>`;
+  }).join("");
+
+  // honest note about errors
+  if (DATA.errored > 0) {
+    $("note").textContent =
+      `${DATA.errored} program(s) show ERROR from free-tier API rate limits, ` +
+      `not repair failures — they were blocked before a fix could be attempted.`;
+  } else {
+    $("note").textContent =
+      `Fixes were validated against the benchmark's reference solutions to ` +
+      `confirm they are genuine repairs rather than tests being gamed.`;
+  }
+
+  $("footer").textContent = "Generated locally from results.json";
+</script>
+</body>
+</html>

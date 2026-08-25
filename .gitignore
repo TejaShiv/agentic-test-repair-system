@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Editor / OS
+.idea/
+.DS_Store
+
+# Generated output (dashboard.html is committed as a sample)
+results.json
