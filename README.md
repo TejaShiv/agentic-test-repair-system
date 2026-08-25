@@ -1,147 +1,115 @@
 # Agentic Test-Repair System
 
-An autonomous agent that fixes failing tests. Point it at a project with a
-failing test suite; it runs the tests, sends the failing code and the error to
-an LLM, applies the returned fix, re-runs the suite to verify, and retries up to
-a limit before giving up.
+An agent that fixes failing tests on its own. You point it at a project, it runs the tests, sends the broken code and the error to an LLM, applies whatever fix comes back, then runs the tests again to check if it actually worked. If it didn't, it tries again with the new error.
 
-It is a small, focused tool built to be understood end to end — not a wrapper
-around a chat interface. The difference from pasting code into ChatGPT is the
-**closed loop**: the agent runs the real test suite, localizes the failure,
-applies a change to the file, and *verifies* by re-running — with no human
-shuttling code back and forth.
+The reason this isn't just "paste your code into ChatGPT" is the loop. ChatGPT can't run your test suite, can't edit your files, and can't tell you whether its fix worked. This does all three without you in the middle copying things back and forth.
 
-**Benchmark result:** 39/40 on QuixBugs (pass@1). The single incomplete case was
-blocked by a free-tier API rate limit, not a repair failure. Fixes were spot-checked
-against the benchmark's reference solutions to confirm they were genuine repairs.
-
----
+**Result: 39 out of 40 on QuixBugs.** The one that didn't finish got blocked by a free-tier API rate limit before it could attempt a fix, so it's not a repair failure. I spot-checked the fixes against QuixBugs' reference solutions to make sure the agent was really fixing things and not just gaming the tests.
 
 ## How it works
 
 ```
-run tests ──▶ tests pass? ──yes──▶ done
+run tests ──▶ do they pass? ──yes──▶ done
                   │
                   no
                   ▼
         read the source file
                   ▼
-    send (error output + source) to the LLM
+    send the error + the code to the LLM
                   ▼
-        write the returned fix to the file
+        write the fix back to the file
                   ▼
-           re-run the tests
+           run the tests again
                   │
         pass? ──yes──▶ done
           │
-          no ──▶ feed the new error back, retry (up to N attempts)
+          no ──▶ send the new error back and retry (up to N times)
                   │
-             out of attempts ──▶ report unfixed
+             out of tries ──▶ report it as unfixed
 ```
 
-The core loop is deliberately simple. The engineering is in the parts around it:
-capturing test output reliably, timing out on infinite-loop bugs, constraining the
-model to return only code, running against an arbitrary target directory, and
-recording results.
+The loop itself is simple. Most of the actual work went into the stuff around it: capturing test output properly, not hanging forever on bugs that cause infinite loops, getting the model to return only code instead of a chatty explanation, making it work on any directory you point it at, and not accidentally editing files it shouldn't touch.
 
-## Repository layout
+## What's in here
 
-| File | Purpose |
-|------|---------|
-| `repair.py` | **The developer entry point.** Point it at a project; it discovers failing tests, repairs them, and writes the report. |
-| `agent.py` | The repair agent: builds the prompt, calls the model, applies the fix, drives the retry loop (`fix_tests`). |
-| `runner.py` | Runs a test suite in a target directory via `pytest` and returns pass/fail + output, with a timeout for hanging tests (`run_tests`). |
-| `quixbugs_runner.py` | Benchmark harness: runs the agent across the QuixBugs suite to produce the published result. |
-| `dashboard_template.py` | The self-contained HTML report template. |
-| `prompt.txt` | The instruction sent to the model (constrains it to return only corrected code, no hardcoding). |
-| `results.json` | Machine-readable results from the last run. |
-| `dashboard.html` | Generated visual report — open it in a browser, no server needed. |
+| File | What it does |
+|------|--------------|
+| `repair.py` | Start here. This is what you run on a project. |
+| `agent.py` | The agent itself. Builds the prompt, calls the model, writes the fix, handles retries. |
+| `runner.py` | Runs pytest in whatever directory you give it and hands back pass/fail plus the output. Has a timeout so hanging tests don't freeze everything. |
+| `quixbugs_runner.py` | The benchmark script I used to get the 39/40 number. |
+| `dashboard_template.py` | The HTML for the report. |
+| `prompt.txt` | What gets sent to the model. Mostly telling it to return only code and not to hardcode values to make tests pass. |
+| `dashboard.html` | The generated report. Open it in a browser, no server needed. |
 
 ## Running it
 
-Requirements: Python 3, `pytest`, and a Gemini API key.
+You'll need Python 3, pytest, and a Gemini API key.
 
 ```bash
 pip install -r requirements.txt
 echo "GEMINI_API_KEY=your_key_here" > .env
 ```
 
-### Repair your own project
+### On your own project
 
 ```bash
 python3 repair.py /path/to/your/project
 ```
 
-It walks the project, finds test files (`test_*.py` / `*_test.py`), infers the
-source file each one exercises from the naming convention, and repairs the ones
-that fail. Progress prints live to the console, then it writes `results.json`
-and `dashboard.html`.
+It looks through the project for test files (`test_*.py` or `*_test.py`), figures out which source file each test is testing based on the naming, and fixes the ones that fail. You'll see progress in the terminal as it goes, and it writes out `results.json` and `dashboard.html` at the end.
 
-When the convention doesn't apply, name the pair explicitly:
+If your project doesn't follow the usual naming, just tell it which files to use:
 
 ```bash
 python3 repair.py /path/to/project --source src/foo.py --test tests/test_foo.py
 ```
 
-Other options:
+Flags:
 
-| Flag | Effect |
-|------|--------|
-| `--attempts N` | Repair attempts per test (default 3) |
-| `--dry-run` | Report what would be repaired, change nothing |
-| `--no-dashboard` | Skip generating `dashboard.html` |
+| Flag | What it does |
+|------|--------------|
+| `--attempts N` | How many times to retry per test (default 3) |
+| `--dry-run` | Shows you what it would fix without changing anything |
+| `--no-dashboard` | Skip making the HTML report |
 
-Start with `--dry-run` on an unfamiliar project: it shows which tests fail and
-which files would be edited, without touching anything.
+Use `--dry-run` first on any project you don't know well. It'll show you which tests are failing and which files it plans to edit, without touching anything. I added this after it almost overwrote QuixBugs' reference solutions on my first real run, which would have destroyed the thing I was validating against.
 
-### Reproduce the benchmark
+### Reproducing the benchmark
 
 ```bash
 python3 quixbugs_runner.py
 ```
 
-Expects the QuixBugs repo cloned locally; set the path at the top of the file.
+You'll need QuixBugs cloned locally and the path set at the top of the file.
 
-## Benchmark and methodology
+## About the benchmark
 
-The agent is evaluated on **QuixBugs** — 40 classic algorithms, each with a
-single-line bug and a test suite that the buggy version fails. QuixBugs is a
-standard academic program-repair benchmark, which makes the result comparable to
-published work rather than to hand-picked toy cases.
+I used QuixBugs, which is 40 classic algorithms that each have a one-line bug and a test suite the buggy version fails. It's a standard benchmark in program repair research, which means the number is comparable to published work instead of to test cases I made up myself. (I did start with my own test cases, and the agent passed all of them, which told me nothing except that my cases were too easy.)
 
-- **pass@1**: each program gets a single repair attempt, matching how repair
-  results are reported in the literature.
-- **Verification**: a fix "passes" only if it makes the program's full,
-  multi-input test suite pass — not a single weak assertion.
-- **Validation**: passing fixes were spot-checked against QuixBugs' reference
-  solutions to confirm they are genuine repairs, not the model gaming a weak test.
+A few things about how I measured it:
 
-## Honest limitations
+**pass@1.** Each program gets one shot at a fix, which is how these results get reported in papers.
 
-These are real and worth stating plainly — they are also the most interesting part
-of the project.
+**What counts as passing.** The fix has to make the program's full test suite pass, and those tests run several different inputs. So a fix that only works for one input won't slip through.
 
-- **The objective can be gamed.** The agent's goal is "make the failing test
-  pass." When a test is *wrong* or impossible, the model will satisfy it by
-  corrupting correct code (e.g. hardcoding a return value). Prompt rules reduce the
-  obvious cheats but cannot eliminate them, because the incentive to pass the test
-  at any cost remains. This is a fundamental limitation of test-driven repair, not
-  a bug in the implementation.
-- **It assumes the test is correct.** When a test fails, either the code or the
-  test is wrong, and the failure alone doesn't say which. This tool assumes the
-  test defines correct behavior and repairs the code. That assumption is stated,
-  not hidden.
-- **Single-file scope.** It repairs one source file per failing test. Multi-file
-  bugs (as in project-scale benchmarks like Defects4J) are out of scope.
-- **QuixBugs is easy for modern LLMs.** Single-line algorithmic bugs, and a
-  benchmark old enough to plausibly be in training data, mean a near-perfect score
-  should be read as an upper bound — not evidence the approach handles hard, novel
-  bugs.
+**Checking the fixes are real.** I compared some of the passing fixes against QuixBugs' reference solutions. Most matched. One was actually different from the reference but still correct, and arguably more defensive than the official answer, which was a useful reminder that "correct" doesn't mean "identical to the reference."
 
-## Possible next steps
+## Where this falls apart
 
-- Localize the source file from the failure automatically (rather than being told).
-- Run as a CI check that proposes fixes on a pull request instead of on demand.
-- Evaluate on a harder, less-memorized benchmark to find the real breaking point.
-- A toggle so it can watch a project and repair on demand, staying out of the way
-  while the developer is intentionally mid-change.
+These are real problems with the approach, and honestly they're the most interesting part of building this.
+
+**The agent will cheat if you let it.** Its goal is to make the failing test pass, so if a test is just plain wrong, it'll satisfy the test by breaking the code. I tested this by writing a test that demanded `sub(5,3) == 999`. The agent added a special case to return 999 for those inputs. So I added prompt rules telling it not to hardcode values. It then rewrote the function to return 999 for everything. Different cheat, same problem. You can't prompt your way out of it, because the incentive to pass the test at any cost is still there.
+
+**It assumes the test is right.** When a test fails, either the code is wrong or the test is wrong, and nothing in the failure tells you which. This tool assumes the test is correct and fixes the code. That's a choice, not an oversight, but it means it does the wrong thing when the test is the actual problem.
+
+**One file at a time.** It fixes a single source file per failing test. Bugs spread across multiple files are out of scope.
+
+**QuixBugs is easy.** These are one-line bugs in well-known algorithms, and the benchmark is old enough that models have probably seen it in training. So 39/40 is a ceiling, not proof that this handles hard or unfamiliar bugs.
+
+## Things I'd add next
+
+- Figure out which source file to fix from the error itself, instead of relying on naming conventions.
+- Run it as a CI check that suggests fixes on a pull request.
+- Try it on a harder benchmark to find where it actually breaks.
+- An on/off switch so it can sit in a project and stay out of the way while you're intentionally mid-change.
