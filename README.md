@@ -1,4 +1,4 @@
-# Agentic Test-Repair System
+# Agentic Code-Repair System
 
 An agent that fixes failing tests on its own. You point it at a project, it runs the tests, sends the broken code and the error to an LLM, applies whatever fix comes back, then runs the tests again to check if it actually worked. If it didn't, it tries again with the new error.
 
